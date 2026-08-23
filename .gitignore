@@ -1,3 +1,9 @@
 venv/
 .env
-langsmith-masterclass/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Cached FAISS indices built by 3_rag_v4.py - large and regenerable
+.indices/
