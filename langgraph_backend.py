@@ -7,9 +7,16 @@ from dotenv import load_dotenv
 from langgraph.graph import START,StateGraph,END
 import os
 import sqlite3
+import langsmith.client
+import langsmith.run_trees as rt
 
 
 load_dotenv()
+
+langsmith.client._TRACING_SEND_TIMEOUT = (30, 60)
+
+# Fix 2: Gives the /info check 30 to 60 seconds so it does not timeout
+rt.get_cached_client(timeout_ms=(30_000, 60_000))
 
 api_key = os.getenv("GROQ_API_KEY")
 
