@@ -7,3 +7,20 @@ __pycache__/
 
 # Cached FAISS indices built by 3_rag_v4.py - large and regenerable
 .indices/
+
+# Manim renders written by the manim MCP server - large and regenerable
+MCP/manim-mcp-server/src/media/
+media/manim_tmp/
+
+# SQLite sidecar files - transient, recreated on next run
+*.db-shm
+*.db-wal
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
