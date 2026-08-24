@@ -1,0 +1,19 @@
+[project]
+name = "expense-tracker"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Roy7721", email = "s2010724129@ru.ac.bd" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastmcp>=3.4.7",
+]
+
+[project.scripts]
+expense-tracker = "expense_tracker:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
