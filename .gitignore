@@ -12,9 +12,12 @@ __pycache__/
 MCP/manim-mcp-server/src/media/
 media/manim_tmp/
 
-# SQLite sidecar files - transient, recreated on next run
+# Local SQLite chat store - practice conversations, regenerated on run.
+# Untracked deliberately so chat history is not published to GitHub.
+*.db
 *.db-shm
 *.db-wal
+*-checkpoint.bin
 
 # Jupyter
 .ipynb_checkpoints/
