@@ -8,7 +8,7 @@ from langgraph.graph import START,StateGraph,END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_core.tools import tool
-import os
+import os, asyncio
 import sqlite3, requests
 import langsmith.client
 import langsmith.run_trees as rt
@@ -30,8 +30,6 @@ llm = ChatOpenAI(
 )
 
 
-# Tools
-search_tool = DuckDuckGoSearchRun(region="us-en")
 
 @tool
 def calculator(first_num: float, second_num: float, operation: str) -> dict:
@@ -57,67 +55,49 @@ def calculator(first_num: float, second_num: float, operation: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-
-
-
-@tool
-def get_weather_data(city: str) -> str:
-  """
-  This function fetches the current weather data for a given city
-  """
-  url = f'http://api.weatherstack.com/current?access_key={os.getenv("WEATHERSTACK_API_KEY")}&query={city}'
-  response = requests.get(url)
-
-  return response.json()
-
-
-
-tools = [search_tool, get_weather_data, calculator]
+tools = [calculator]
 llm_with_tools = llm.bind_tools(tools)
+
+
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
-def chat_node(state: ChatState):
-    messages = state['messages']
-    response = llm_with_tools.invoke(messages)
-    return {"messages": [response]}
+
+def build_graph():
+
+    async def chat_node(state: ChatState):
+
+        messages = state['messages']
+        response = await llm_with_tools.ainvoke(messages)
+        return {"messages" : [response]}
+
+    tool_mode = ToolNode(tools=tools)
+
+    graph = StateGraph(ChatState)
+
+    graph.add_node('chat_node', chat_node)
+    graph.add_node('tools', tool_mode)
+
+    graph.add_edge(START, "chat_node")
+    graph.add_conditional_edges("chat_node",tools_condition)
+
+    graph.add_edge('tools', 'chat_node')    
+
+    chatbot = graph.compile()
+    return chatbot
+
+async def main():
+    chatbot  = build_graph()
+
+    # running the graph
+    result = await chatbot.ainvoke({"messages": [HumanMessage(content="Find the modulus of 132354 and 23 and give answer like a cricket commentator.")]})
+
+    print(result['messages'][-1].content)
+
+if __name__ == '__main__':
+    asyncio.run(main())
 
 
-tool_node = ToolNode(tools)
-
-# Checkpointer
-conn = sqlite3.connect(database= 'chatbot.db', check_same_thread = False)
-checkpointer = SqliteSaver(conn = conn)
-
-graph = StateGraph(ChatState)
-graph.add_node("chat_node", chat_node)
-graph.add_node("tools", tool_node)
-
-graph.add_edge(START, "chat_node")
-
-graph.add_conditional_edges("chat_node",tools_condition)
-graph.add_edge('tools', 'chat_node')
-
-chatbot = graph.compile(checkpointer=checkpointer)
-
-def retrive_all_threads():
-
-    all_thread = set()
-
-    for i in checkpointer.list(None):
-        all_thread.add(i.config["configurable"]['thread_id'])
-
-    return list(all_thread)
 
 
 
-# # test
-# user_input = "what is my name"
-# CONFIG = {"configurable" : {'thread_id' : '1'}}
-
-# response = chatbot.invoke(
-#                       {"messages": [HumanMessage(content = user_input)]}, 
-#                       config=CONFIG
-#                  )
-
-# print(response)
