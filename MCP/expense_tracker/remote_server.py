@@ -5,8 +5,12 @@ import aiosqlite
 import sqlite3
 import tempfile
 
-TEMP_DIR = tempfile.gettempdir()
-DB_PATH = os.path.join(TEMP_DIR, "expenses.db")
+# Temp dir is writable on the hosted container; override with EXPENSE_DB_PATH
+# to point at durable storage (a mounted volume, Turso, etc.).
+DB_PATH = os.environ.get(
+    "EXPENSE_DB_PATH",
+    os.path.join(tempfile.gettempdir(), "expenses.db"),
+)
 CATEGORIES_PATH = os.path.join(os.path.dirname(__file__), "categories.json")
 
 print(f"Database path: {DB_PATH}")
@@ -54,65 +58,64 @@ def _check_range(start_date, end_date):
 
 
 @mcp.tool()
-async def add_expense(date, amount, category, subcategory="", note=""):  # Changed: added async
-    '''Add a new expense entry to the database.'''
-    try:
-        async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
-            cur = await c.execute(  # Changed: added await
-                "INSERT INTO expenses(date, amount, category, subcategory, note) VALUES (?,?,?,?,?)",
-                (date, amount, category, subcategory, note)
-            )
-            expense_id = cur.lastrowid
-            await c.commit()  # Changed: added await
-            return {"status": "success", "id": expense_id, "message": "Expense added successfully"}
-    except Exception as e:  # Changed: simplified exception handling
-        if "readonly" in str(e).lower():
-            return {"status": "error", "message": "Database is in read-only mode. Check file permissions."}
-        return {"status": "error", "message": f"Database error: {str(e)}"}
-    
-@mcp.tool()
-async def list_expenses(start_date, end_date):  # Changed: added async
-    '''List expense entries within an inclusive date range.'''
-    try:
-        async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
-            cur = await c.execute(  # Changed: added await
-                """
-                SELECT id, date, amount, category, subcategory, note
-                FROM expenses
-                WHERE date BETWEEN ? AND ?
-                ORDER BY date DESC, id DESC
-                """,
-                (start_date, end_date)
-            )
-            cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, r)) for r in await cur.fetchall()]  # Changed: added await
-    except Exception as e:
-        return {"status": "error", "message": f"Error listing expenses: {str(e)}"}
+async def add_expense(
+    date: str,
+    amount: float,
+    category: str,
+    subcategory: str = "",
+    note: str = "",
+) -> dict:
+    '''Add a new expense entry to the database. date must be YYYY-MM-DD.'''
+    date = _check_date(date, "date")
+    async with aiosqlite.connect(DB_PATH) as c:
+        cur = await c.execute(
+            "INSERT INTO expenses(date, amount, category, subcategory, note) VALUES (?,?,?,?,?)",
+            (date, amount, category, subcategory, note)
+        )
+        expense_id = cur.lastrowid
+        await c.commit()
+        return {"status": "success", "id": expense_id, "message": "Expense added successfully"}
+
 
 @mcp.tool()
-async def summarize(start_date, end_date, category=None):  # Changed: added async
-    '''Summarize expenses by category within an inclusive date range.'''
-    try:
-        async with aiosqlite.connect(DB_PATH) as c:  # Changed: added async
-            query = """
-                SELECT category, SUM(amount) AS total_amount, COUNT(*) as count
-                FROM expenses
-                WHERE date BETWEEN ? AND ?
+async def list_expenses(start_date: str, end_date: str) -> list[dict]:
+    '''List expense entries within an inclusive date range. Dates are YYYY-MM-DD.'''
+    start_date, end_date = _check_range(start_date, end_date)
+    async with aiosqlite.connect(DB_PATH) as c:
+        cur = await c.execute(
             """
-            params = [start_date, end_date]
+            SELECT id, date, amount, category, subcategory, note
+            FROM expenses
+            WHERE date BETWEEN ? AND ?
+            ORDER BY date DESC, id DESC
+            """,
+            (start_date, end_date)
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in await cur.fetchall()]
 
-            if category:
-                query += " AND category = ?"
-                params.append(category)
 
-            query += " GROUP BY category ORDER BY total_amount DESC"
+@mcp.tool()
+async def summarize(start_date: str, end_date: str, category: str | None = None) -> list[dict]:
+    '''Summarize expenses by category within an inclusive date range. Dates are YYYY-MM-DD.'''
+    start_date, end_date = _check_range(start_date, end_date)
+    async with aiosqlite.connect(DB_PATH) as c:
+        query = """
+            SELECT LOWER(category) AS category, SUM(amount) AS total_amount, COUNT(*) as count
+            FROM expenses
+            WHERE date BETWEEN ? AND ?
+        """
+        params = [start_date, end_date]
 
-            cur = await c.execute(query, params)  # Changed: added await
-            cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, r)) for r in await cur.fetchall()]  # Changed: added await
-    except Exception as e:
-        return {"status": "error", "message": f"Error summarizing expenses: {str(e)}"}
+        if category:
+            query += " AND LOWER(category) = LOWER(?)"
+            params.append(category)
 
+        query += " GROUP BY LOWER(category) ORDER BY total_amount DESC"
+
+        cur = await c.execute(query, params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in await cur.fetchall()]
 
 
 @mcp.resource("expense://categories", mime_type="application/json")
