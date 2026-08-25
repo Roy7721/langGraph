@@ -3,9 +3,13 @@ from datetime import date as _date
 import os
 import aiosqlite
 import sqlite3
+import tempfile
 
-DB_PATH = os.path.join(os.path.dirname(__file__),"expense.db")
+TEMP_DIR = tempfile.gettempdir()
+DB_PATH = os.path.join(TEMP_DIR, "expenses.db")
 CATEGORIES_PATH = os.path.join(os.path.dirname(__file__), "categories.json")
+
+print(f"Database path: {DB_PATH}")
 
 mcp = FastMCP("Expense_Tracker")
 
@@ -21,6 +25,11 @@ def init_db():
                 note TEXT DEFAULT ''
             )
         """)
+
+        # Test write access
+        c.execute("INSERT OR IGNORE INTO expenses(date, amount, category) VALUES ('2000-01-01', 0, 'test')")
+        c.execute("DELETE FROM expenses WHERE category = 'test'")
+        print("Database initialized successfully with write access")
 
 init_db()
 
